@@ -70,23 +70,26 @@ jobs:
           echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
           echo "ECR_REGISTRY=$ECR_REGISTRY" >> $GITHUB_ENV
 
-      # SSH SETUP
+      # SSH SETUP - FIXED
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+
       - name: Add EC2 to known hosts
         run: |
+          mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+          cat ~/.ssh/known_hosts
 
       # CD
       - name: Login EC2 Docker to ECR
         run: |
-          aws ecr get-login-password --region "$AWS_REGION" | ssh "$EC2_USER@${{ secrets.EC2_HOST }}" "docker login --username AWS --password-stdin $ECR_REGISTRY"
+          aws ecr get-login-password --region "$AWS_REGION" | ssh -o StrictHostKeyChecking=no "$EC2_USER@${{ secrets.EC2_HOST }}" "docker login --username AWS --password-stdin $ECR_REGISTRY"
 
       - name: Deploy Application to EC2
         run: |
-          ssh "$EC2_USER@${{ secrets.EC2_HOST }}" << EOF
+          ssh -o StrictHostKeyChecking=no "$EC2_USER@${{ secrets.EC2_HOST }}" << EOF
           set -e
           echo "Pulling new Docker image..."
           docker pull "$IMAGE_URI"
@@ -101,5 +104,5 @@ jobs:
 
       - name: Verify Deployment
         run: |
-          sleep 5
-          curl --fail --retry 5 --retry-delay 3 "http://${{ secrets.EC2_HOST }}"
+          sleep 10
+          curl --fail --retry 5 --retry-delay 5 "http://${{ secrets.EC2_HOST }}"
