@@ -1,0 +1,104 @@
+name: Frontend CI/CD to AWS EC2
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: student-cicd-frontend
+  CONTAINER_NAME: student-frontend
+  EC2_USER: ec2-user
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # CI
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Lint
+        run: npm run lint
+
+      - name: Build Frontend
+        run: npm run build
+
+      # AWS AUTHENTICATION
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify AWS Authentication
+        run: aws sts get-caller-identity
+
+      # ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+
+      - name: Push Docker Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=$ECR_REGISTRY" >> $GITHUB_ENV
+
+      # SSH SETUP
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s\n" "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/ec2_key
+          chmod 600 ~/.ssh/ec2_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      # CD
+      - name: Login EC2 Docker to ECR
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" | ssh -i ~/.ssh/ec2_key "$EC2_USER@${{ secrets.EC2_HOST }}" "docker login --username AWS --password-stdin $ECR_REGISTRY"
+
+      - name: Deploy Application to EC2
+        run: |
+          ssh -i ~/.ssh/ec2_key "$EC2_USER@${{ secrets.EC2_HOST }}" << EOF
+          set -e
+          echo "Pulling new Docker image..."
+          docker pull "$IMAGE_URI"
+          echo "Stopping previous container..."
+          docker stop "$CONTAINER_NAME" || true
+          echo "Removing previous container..."
+          docker rm "$CONTAINER_NAME" || true
+          echo "Starting new container..."
+          docker run -d --restart unless-stopped --name "$CONTAINER_NAME" -p 80:80 "$IMAGE_URI"
+          docker ps
+          EOF
+
+      - name: Verify Deployment
+        run: |
+          sleep 5
+          curl --fail --retry 5 --retry-delay 3 "http://${{ secrets.EC2_HOST }}"
