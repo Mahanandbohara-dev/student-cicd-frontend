@@ -1,16 +1,56 @@
-# React + Vite
+# CI/CD React Application Deployment to AWS EC2
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Application
+- React + Vite frontend application
+- Displays CI/CD deployment status
 
-Currently, two official plugins are available:
+## Architecture
+- **GitHub**: Source code repository
+- **GitHub Actions**: CI/CD pipeline
+- **Docker**: Containerization
+- **Amazon ECR**: Docker image registry
+- **Amazon EC2**: Application hosting
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Continuous Integration (CI)
+- Checkout code
+- Install dependencies (`npm ci`)
+- Run linting (`npm run lint`)
+- Build application (`npm run build`)
 
-## React Compiler
+## Continuous Deployment (CD)
+- Build Docker image
+- Push to Amazon ECR
+- SSH to EC2
+- Pull new image
+- Stop old container
+- Run new container
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Dockerfile
+- **Stage 1**: Node.js 22 Alpine - Build React app
+- **Stage 2**: Nginx Alpine - Serve built files
 
-## Expanding the ESLint configuration
+## GitHub Secrets
+- AWS_ACCESS_KEY_ID
+- AWS_SECRET_ACCESS_KEY
+- AWS_SESSION_TOKEN
+- EC2_HOST
+- EC2_SSH_PRIVATE_KEY
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Problems Encountered
+### Problem 1: Dockerfile not found in GitHub Actions
+- **Error**: `open Dockerfile: no such file or directory`
+- **Cause**: Dockerfile not pushed to GitHub
+- **Solution**: Added Dockerfile and .dockerignore, pushed to GitHub
+
+### Problem 2: SSH connection timeout
+- **Error**: `ssh: connect to host port 22: Operation timed out`
+- **Cause**: EC2 Public IP changed after reboot
+- **Solution**: Updated EC2_HOST secret with new IP
+
+### Problem 3: Configure SSH step failed in GitHub Actions
+- **Error**: `mkdir -p ~/.ssh` exit code 1
+- **Cause**: Permission issue in GitHub runner
+- **Solution**: Used official `webfactory/ssh-agent` action
+
+## Live URL
+http://54.161.139.52
