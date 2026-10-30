@@ -68,7 +68,6 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
-          echo "ECR_REGISTRY=$ECR_REGISTRY" >> $GITHUB_ENV
 
       # SSH SETUP
       - name: Setup SSH
@@ -80,12 +79,13 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "${{ secrets.EC2_HOST }}"
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
       # CD
       - name: Login EC2 Docker to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           aws ecr get-login-password --region "$AWS_REGION" | ssh -o StrictHostKeyChecking=no "$EC2_USER@${{ secrets.EC2_HOST }}" "docker login --username AWS --password-stdin $ECR_REGISTRY"
 
