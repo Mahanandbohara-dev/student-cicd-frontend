@@ -90,8 +90,14 @@ jobs:
           aws ecr get-login-password --region "$AWS_REGION" | ssh -o StrictHostKeyChecking=no "$EC2_USER@${{ secrets.EC2_HOST }}" "docker login --username AWS --password-stdin $ECR_REGISTRY"
 
       - name: Deploy Application to EC2
+        env:
+          IMAGE_URI: ${{ env.IMAGE_URI }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
         run: |
-          ssh -o StrictHostKeyChecking=no "$EC2_USER@${{ secrets.EC2_HOST }}" << 'EOF'
+          ssh -o StrictHostKeyChecking=no "$EC2_USER@${{ secrets.EC2_HOST }}" \
+            IMAGE_URI="$IMAGE_URI" \
+            CONTAINER_NAME="$CONTAINER_NAME" \
+            'bash -s' << 'EOF'
           set -e
           echo "Pulling new Docker image..."
           docker pull "$IMAGE_URI"
